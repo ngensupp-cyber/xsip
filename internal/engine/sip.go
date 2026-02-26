@@ -51,9 +51,9 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 		return
 	}
 
-	tenantID := req.Header.Get("X-Tenant-ID") // Example: Get tenant from header
-	if tenantID == "" {
-		tenantID = "default"
+	tenantID := "default"
+	if h := req.GetHeader("X-Tenant-ID"); h != nil {
+		tenantID = h.String()
 	}
 
 	utils.SipRequestsTotal.WithLabelValues("INVITE", tenantID).Inc()
