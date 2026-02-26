@@ -86,7 +86,7 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 
 	// Create a proxy request
 	proxyReq := req.Clone()
-	proxyReq.Recipient = &destURI // Update Request-URI
+	proxyReq.Recipient = destURI // Update Request-URI
 	
 	// Start Call Tracking
 	callID := req.CallID().Value()
@@ -159,7 +159,7 @@ func (e *SIPEngine) onMessage(req *sip.Request, tx sip.ServerTransaction) {
 	var destURI sip.Uri
 	_ = sip.ParseUri(dest, &destURI)
 	proxyReq := req.Clone()
-	proxyReq.Recipient = &destURI
+	proxyReq.Recipient = destURI
 
 	ctx := context.Background()
 	clTx, err := e.client.TransactionRequest(ctx, proxyReq)
