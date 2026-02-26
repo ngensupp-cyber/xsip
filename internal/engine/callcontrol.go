@@ -1,3 +1,7 @@
+package engine
+
+import (
+	"log"
 	"nextgen-sip/internal/models"
 	"nextgen-sip/pkg/utils"
 	"sync"
@@ -5,6 +9,7 @@
 
 	"github.com/google/uuid"
 )
+
 
 // CallControl manages the state of active calls
 type CallControl struct {
