@@ -1,13 +1,11 @@
 package router
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"nextgen-sip/internal/models"
 	"sync"
 
-	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 )
 
@@ -40,7 +38,7 @@ func NewRoutingEngine(reg Registrar, bill BillingEngine) *RoutingEngine {
 
 // Route handles an incoming SIP request and returns the destination or an error
 func (e *RoutingEngine) Route(req *sip.Request) (string, error) {
-	switch req.Method() {
+	switch req.Method {
 	case sip.REGISTER:
 		return e.handleRegister(req)
 	case sip.INVITE:
@@ -48,9 +46,10 @@ func (e *RoutingEngine) Route(req *sip.Request) (string, error) {
 	case sip.BYE:
 		return e.handleBye(req)
 	default:
-		return "", fmt.Errorf("method %s not supported by router", req.Method())
+		return "", fmt.Errorf("method %s not supported by router", req.Method)
 	}
 }
+
 
 func (e *RoutingEngine) handleRegister(req *sip.Request) (string, error) {
 	from := req.From().Address.String()
