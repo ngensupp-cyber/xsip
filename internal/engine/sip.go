@@ -15,6 +15,7 @@ import (
 
 type SIPEngine struct {
 	server *sipgo.Server
+	client *sipgo.Client
 	router *router.RoutingEngine
 	cc     *CallControl
 	fw     *firewall.Firewall
@@ -25,8 +26,13 @@ func NewSIPEngine(ua *sipgo.UserAgent, r *router.RoutingEngine, cc *CallControl,
 	if err != nil {
 		log.Fatal(err)
 	}
+	c, err := sipgo.NewClient(ua)
+	if err != nil {
+		log.Fatal(err)
+	}
 	return &SIPEngine{
 		server: s,
+		client: c,
 		router: r,
 		cc:     cc,
 		fw:     fw,
@@ -72,7 +78,7 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 	// 2. Forward INVITE to Destination
 	log.Printf("[SIP] Proxying INVITE to %s", dest)
 	
-	destAddr, err := sip.ParseAddrUri(dest)
+	destURI, err := sip.ParseURI(dest)
 	if err != nil {
 		log.Printf("[SIP] Failed to parse destination %s: %v", dest, err)
 		return
@@ -80,7 +86,7 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 
 	// Create a proxy request
 	proxyReq := req.Clone()
-	proxyReq.Recipient = destAddr // Update Request-URI
+	proxyReq.Recipient = destURI // Update Request-URI
 	
 	// Start Call Tracking
 	callID := req.CallID().Value()
@@ -88,7 +94,7 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 
 	// Send request through client and relay responses
 	ctx := context.Background()
-	clTx, err := e.server.TransactionRequest(ctx, proxyReq)
+	clTx, err := e.client.TransactionRequest(ctx, proxyReq)
 	if err != nil {
 		log.Printf("[SIP] Proxy error: %v", err)
 		return
@@ -150,12 +156,12 @@ func (e *SIPEngine) onMessage(req *sip.Request, tx sip.ServerTransaction) {
 		return
 	}
 
-	destAddr, _ := sip.ParseAddrUri(dest)
+	destURI, _ := sip.ParseURI(dest)
 	proxyReq := req.Clone()
-	proxyReq.Recipient = destAddr
+	proxyReq.Recipient = destURI
 
 	ctx := context.Background()
-	clTx, err := e.server.TransactionRequest(ctx, proxyReq)
+	clTx, err := e.client.TransactionRequest(ctx, proxyReq)
 	if err != nil {
 		res := sip.NewResponseFromRequest(req, 500, "Server Internal Error", nil)
 		tx.Respond(res)
