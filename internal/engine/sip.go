@@ -78,15 +78,15 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 	// 2. Forward INVITE to Destination
 	log.Printf("[SIP] Proxying INVITE to %s", dest)
 	
-	destURI, err := sip.ParseURI(dest)
-	if err != nil {
+	var destURI sip.Uri
+	if err := sip.ParseUri(dest, &destURI); err != nil {
 		log.Printf("[SIP] Failed to parse destination %s: %v", dest, err)
 		return
 	}
 
 	// Create a proxy request
 	proxyReq := req.Clone()
-	proxyReq.Recipient = destURI // Update Request-URI
+	proxyReq.Recipient = &destURI // Update Request-URI
 	
 	// Start Call Tracking
 	callID := req.CallID().Value()
@@ -156,9 +156,10 @@ func (e *SIPEngine) onMessage(req *sip.Request, tx sip.ServerTransaction) {
 		return
 	}
 
-	destURI, _ := sip.ParseURI(dest)
+	var destURI sip.Uri
+	_ = sip.ParseUri(dest, &destURI)
 	proxyReq := req.Clone()
-	proxyReq.Recipient = destURI
+	proxyReq.Recipient = &destURI
 
 	ctx := context.Background()
 	clTx, err := e.client.TransactionRequest(ctx, proxyReq)
