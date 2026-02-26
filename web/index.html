@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NextGen SIP | Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+Arabic:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="dark-theme">
+    <nav class="sidebar">
+        <div class="logo">
+            <span class="icon">🚀</span>
+            <h1>NextGen SIP</h1>
+        </div>
+        <ul class="nav-links">
+            <li class="active" data-page="overview">اللوحة العامة</li>
+            <li data-page="users">المستخدمين</li>
+            <li data-page="calls">المكالمات الحية</li>
+            <li data-page="firewall">الحماية</li>
+            <li data-page="config">الإعدادات</li>
+        </ul>
+        <div class="status-indicator">
+            <div class="dot online"></div>
+            <span>نظام المتصل</span>
+        </div>
+    </nav>
+
+    <main class="content">
+        <header>
+            <div class="search-bar">
+                <input type="text" placeholder="البحث عن مستخدم أو رقم...">
+            </div>
+            <div class="user-profile">
+                <span class="tenant-id">Tenant: Global-1</span>
+                <div class="avatar">Admin</div>
+            </div>
+        </header>
+
+        <section id="page-overview" class="page active">
+            <div class="bento-grid">
+                <div class="bento-item stat-card">
+                    <h3>المكالمات النشطة</h3>
+                    <div class="value" id="stat-active-calls">0</div>
+                    <div class="trend up">+12% من الساعة الماضية</div>
+                </div>
+                <div class="bento-item stat-card">
+                    <h3>المسجلين الآن</h3>
+                    <div class="value" id="stat-registrations">0</div>
+                    <div class="trend">مستقر</div>
+                </div>
+                <div class="bento-item chart-card large">
+                    <h3>أداء الشبكة (Packets/sec)</h3>
+                    <canvas id="networkChart"></canvas>
+                </div>
+                <div class="bento-item alert-card">
+                    <h3>تنبيهات الأمان</h3>
+                    <ul id="security-alerts">
+                        <li>لا يوجد تهديدات حالياً</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <section id="page-users" class="page">
+            <div class="section-header">
+                <h2>إدارة المشتركين</h2>
+                <button class="btn-primary" onclick="showModal('user-modal')">إضافة مشترك جديد +</button>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>الاسم</th>
+                            <th>SIP URI</th>
+                            <th>الرصيد</th>
+                            <th>الحالة</th>
+                            <th>الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="user-table-body">
+                        <!-- Data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modals -->
+    <div id="user-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('user-modal')">&times;</span>
+            <h2>إضافة هاتف جديد</h2>
+            <form id="user-form">
+                <input type="text" id="user-name" placeholder="الاسم" required>
+                <input type="text" id="user-sip" placeholder="رقم الهاتف (مثال: 100)" required>
+                <input type="password" id="user-pass" placeholder="كلمة المرور" required>
+                <input type="number" id="user-balance" placeholder="الرصيد الابتدائي ($)" required>
+                <button type="submit" class="btn-primary">حفظ البيانات</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

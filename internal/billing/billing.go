@@ -8,11 +8,13 @@ import (
 
 type InMemoryBilling struct {
 	mu       sync.RWMutex
+	users    map[string]models.User
 	balances map[string]float64
 }
 
 func NewInMemoryBilling() *InMemoryBilling {
 	return &InMemoryBilling{
+		users:    make(map[string]models.User),
 		balances: make(map[string]float64),
 	}
 }
@@ -22,6 +24,32 @@ func (b *InMemoryBilling) SetBalance(user string, amount float64) {
 	defer b.mu.Unlock()
 	b.balances[user] = amount
 }
+
+func (b *InMemoryBilling) SaveUser(u models.User) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	uri := "sip:" + u.ID + "@localhost"
+	b.users[uri] = u
+	b.balances[uri] = u.Balance
+}
+
+func (b *InMemoryBilling) ListUsers() ([]models.User, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	list := make([]models.User, 0, len(b.users))
+	for _, u := range b.users {
+		list = append(list, u)
+	}
+	return list, nil
+}
+
+func (b *InMemoryBilling) DeleteUser(uri string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.users, uri)
+	delete(b.balances, uri)
+}
+
 
 func (b *InMemoryBilling) CanCall(from string, to string) (bool, error) {
 	b.mu.RLock()

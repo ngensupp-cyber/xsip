@@ -126,4 +126,8 @@ type BillingEngine interface {
 	CanCall(from string, to string) (bool, error)
 	Deduct(user string, amount float64) error
 	SetBalance(user string, amount float64)
+	ListUsers() ([]models.User, error)
+	SaveUser(u models.User)
+	DeleteUser(uri string)
 }
+
