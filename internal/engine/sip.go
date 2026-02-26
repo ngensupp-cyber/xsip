@@ -36,6 +36,7 @@ func (e *SIPEngine) Start(ctx context.Context, network, addr string) error {
 	e.server.OnInvite(e.onInvite)
 	e.server.OnRegister(e.onRegister)
 	e.server.OnBye(e.onBye)
+	e.server.OnMessage(e.onMessage)
 
 	log.Printf("Carrier-Grade SIP Engine starting on %s (%s)", addr, network)
 	return e.server.ListenAndServe(ctx, network, addr)
@@ -99,4 +100,13 @@ func (e *SIPEngine) onBye(req *sip.Request, tx sip.ServerTransaction) {
 	res := sip.NewResponseFromRequest(req, 200, "OK", nil)
 	tx.Respond(res)
 }
+
+func (e *SIPEngine) onMessage(req *sip.Request, tx sip.ServerTransaction) {
+	log.Printf("[SIP] MESSAGE received from %s to %s", req.From().Address.String(), req.To().Address.String())
+	
+	// Simply acknowledge for now to stop "pending" status on clients
+	res := sip.NewResponseFromRequest(req, 200, "OK", nil)
+	tx.Respond(res)
+}
+
 

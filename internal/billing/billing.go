@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"strings"
 	"nextgen-sip/internal/models"
 )
+
+
 
 type InMemoryBilling struct {
 	mu       sync.RWMutex
@@ -52,14 +55,26 @@ func (b *InMemoryBilling) DeleteUser(uri string) {
 }
 
 
+func (b *InMemoryBilling) normalizeURI(uri string) string {
+	// Extracts the user part from sip:user@domain
+	var user string
+	_, err := fmt.Sscanf(uri, "sip:%s", &user)
+	if err != nil {
+		return uri
+	}
+	// Split by @ to get only the username
+	parts := strings.Split(user, "@")
+	return "sip:" + parts[0] + "@localhost"
+}
+
 func (b *InMemoryBilling) CanCall(from string, to string) (bool, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	
+	from = b.normalizeURI(from)
 	balance, ok := b.balances[from]
 	if !ok {
-		// For demo, allow registration if not found, but real system would deny
-		log.Printf("[Billing] User %s not found, denying call", from)
+		log.Printf("[Billing] Normalized user %s not found, denying call", from)
 		return false, fmt.Errorf("insufficient funds or user not found")
 	}
 
@@ -73,6 +88,7 @@ func (b *InMemoryBilling) Deduct(user string, amount float64) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	user = b.normalizeURI(user)
 	balance, ok := b.balances[user]
 	if !ok || balance < amount {
 		return fmt.Errorf("insufficient funds")
@@ -81,6 +97,7 @@ func (b *InMemoryBilling) Deduct(user string, amount float64) error {
 	b.balances[user] -= amount
 	return nil
 }
+
 
 func (b *InMemoryBilling) StartCall(from string, to string) (string, error) {
 	log.Printf("[Billing] Starting call from %s to %s", from, to)
