@@ -29,15 +29,16 @@ func NewSIPEngine(ua *sipgo.UserAgent, r *router.RoutingEngine, cc *CallControl,
 	}
 }
 
-func (e *SIPEngine) Start(ctx context.Context) error {
+func (e *SIPEngine) Start(ctx context.Context, network, addr string) error {
 	// Add Global Middleware (Firewall)
 	e.server.OnInvite(e.onInvite)
 	e.server.OnRegister(e.onRegister)
 	e.server.OnBye(e.onBye)
 
-	log.Println("Carrier-Grade SIP Engine starting on :5060")
-	return e.server.ListenAndServe(ctx, "udp", "0.0.0.0:5060")
+	log.Printf("Carrier-Grade SIP Engine starting on %s (%s)", addr, network)
+	return e.server.ListenAndServe(ctx, network, addr)
 }
+
 
 func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 	// 1. Firewall Check

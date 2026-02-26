@@ -14,14 +14,23 @@ type RedisRegistrar struct {
 }
 
 func NewRedisRegistrar(addr string) *RedisRegistrar {
-	rdb := redis.NewClient(&redis.Options{
-		Addr: addr,
-	})
+	opt, err := redis.ParseURL(addr)
+	var rdb *redis.Client
+	if err != nil {
+		// Fallback to simple address if not a URL
+		rdb = redis.NewClient(&redis.Options{
+			Addr: addr,
+		})
+	} else {
+		rdb = redis.NewClient(opt)
+	}
+	
 	return &RedisRegistrar{
 		rdb: rdb,
 		ctx: context.Background(),
 	}
 }
+
 
 func (r *RedisRegistrar) Register(uri string, contact string) error {
 	// Store registration with a TTL (e.g., 1 hour)

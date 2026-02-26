@@ -16,8 +16,29 @@ import (
 )
 
 func main() {
-	// Initialize Components
-	reg := registrar.NewRedisRegistrar("localhost:6379")
+	// 1. Environment Variables Configuration
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = "localhost:6379" // Default fallback
+	}
+
+	adminPort := os.Getenv("PORT")
+	if adminPort == "" {
+		adminPort = "8080"
+	}
+
+	sipPort := os.Getenv("SIP_PORT")
+	if sipPort == "" {
+		sipPort = "5060"
+	}
+
+	sipProtocol := os.Getenv("SIP_PROTOCOL")
+	if sipProtocol == "" {
+		sipProtocol = "udp"
+	}
+
+	// 2. Initialize Components
+	reg := registrar.NewRedisRegistrar(redisURL)
 	bill := billing.NewInMemoryBilling()
 	fw := firewall.NewFirewall()
 	cc := engine.NewCallControl(bill)
@@ -30,7 +51,7 @@ func main() {
 	rt := router.NewRoutingEngine(reg, bill)
 
 	ua, err := sipgo.NewUA(
-		sipgo.WithUserAgent("NextGen-SIP-Proxy/2.0"),
+		sipgo.WithUserAgent("NextGen-SIP-Proxy/2.5-Railway"),
 	)
 	if err != nil {
 		log.Fatalf("Failed to create UA: %v", err)
@@ -48,20 +69,24 @@ func main() {
 
 	go func() {
 		<-sigCh
-		log.Println("Shutting down SIP and Admin API...")
+		log.Println("Graceful shutdown initiated...")
 		cancel()
 	}()
 
-	// Start Admin API in background
+	// Start Admin API
 	go func() {
-		log.Println("Admin API starting on :8080")
-		if err := admin.Start(":8080"); err != nil {
+		addr := ":" + adminPort
+		log.Printf("Admin API starting on %s", addr)
+		if err := admin.Start(addr); err != nil {
 			log.Printf("Admin API failed: %v", err)
 		}
 	}()
 
-	if err := sipEngine.Start(ctx); err != nil {
-		log.Fatalf("Engine failed: %v", err)
+	// Start SIP Engine
+	sipAddr := "0.0.0.0:" + sipPort
+	if err := sipEngine.Start(ctx, sipProtocol, sipAddr); err != nil {
+		log.Fatalf("SIP Engine failed: %v", err)
 	}
 }
+
 
