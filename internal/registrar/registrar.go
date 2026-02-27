@@ -3,6 +3,7 @@ package registrar
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -17,24 +18,22 @@ func NewRedisRegistrar(addr string) *RedisRegistrar {
 	opt, err := redis.ParseURL(addr)
 	var rdb *redis.Client
 	if err != nil {
-		// Fallback to simple address if not a URL
 		rdb = redis.NewClient(&redis.Options{
 			Addr: addr,
 		})
 	} else {
 		rdb = redis.NewClient(opt)
 	}
-	
+
 	return &RedisRegistrar{
 		rdb: rdb,
 		ctx: context.Background(),
 	}
 }
 
-
 func (r *RedisRegistrar) Register(uri string, contact string) error {
-	// Store registration with a TTL (e.g., 1 hour)
 	key := fmt.Sprintf("reg:%s", uri)
+	log.Printf("[Registrar] Storing %s => %s", key, contact)
 	return r.rdb.Set(r.ctx, key, contact, 1*time.Hour).Err()
 }
 

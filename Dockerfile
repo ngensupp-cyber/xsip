@@ -42,7 +42,7 @@ EXPOSE 5060/tcp
 # Set Environment Variables
 ENV PORT=8080
 ENV SIP_PORT=5060
-ENV SIP_PROTOCOL=udp
+ENV SIP_PROTOCOL=tcp
 
 # Start the system
 CMD ["./nextgen-sip"]

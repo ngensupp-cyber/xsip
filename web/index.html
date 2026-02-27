@@ -1,107 +1,464 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NextGen SIP | Dashboard</title>
+    <title>XSIP | Carrier Management System</title>
+    <meta name="description" content="XSIP Enterprise Carrier-Grade VoIP Management Platform">
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+Arabic:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body class="dark-theme">
-    <nav class="sidebar">
-        <div class="logo">
-            <span class="icon">🚀</span>
-            <h1>NextGen SIP</h1>
-        </div>
-        <ul class="nav-links">
-            <li class="active" data-page="overview">اللوحة العامة</li>
-            <li data-page="users">المستخدمين</li>
-            <li data-page="calls">المكالمات الحية</li>
-            <li data-page="firewall">الحماية</li>
-            <li data-page="config">الإعدادات</li>
-        </ul>
-        <div class="status-indicator">
-            <div class="dot online"></div>
-            <span>نظام المتصل</span>
-        </div>
-    </nav>
 
-    <main class="content">
-        <header>
-            <div class="search-bar">
-                <input type="text" placeholder="البحث عن مستخدم أو رقم...">
+<body>
+    <!-- ═══ Sidebar ═══ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="brand">
+            <div class="brand-mark">X</div>
+            <div class="brand-text">
+                <strong>XSIP</strong>
+                <small>Carrier Platform</small>
             </div>
-            <div class="user-profile">
-                <span class="tenant-id">Tenant: Global-1</span>
-                <div class="avatar">Admin</div>
+        </div>
+
+        <nav class="nav">
+            <a class="nav-item active" data-page="overview" onclick="navigate('overview',this)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                </svg>
+                Overview
+            </a>
+            <a class="nav-item" data-page="subscribers" onclick="navigate('subscribers',this)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+                Subscribers
+            </a>
+            <a class="nav-item" data-page="calls" onclick="navigate('calls',this)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+                </svg>
+                Live Calls
+            </a>
+            <a class="nav-item" data-page="cdr" onclick="navigate('cdr',this)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                </svg>
+                Call Records
+            </a>
+            <a class="nav-item" data-page="security" onclick="navigate('security',this)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                Security
+            </a>
+            <a class="nav-item" data-page="network" onclick="navigate('network',this)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+                Network
+            </a>
+            <a class="nav-item" data-page="settings" onclick="navigate('settings',this)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3" />
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+                Settings
+            </a>
+        </nav>
+
+        <div class="sidebar-bottom">
+            <div class="sys-health">
+                <span class="health-dot"></span>
+                <span>System Healthy</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ═══ Main ═══ -->
+    <main class="main">
+        <header class="header">
+            <div>
+                <h1 id="page-title">System Overview</h1>
+                <p class="header-sub" id="page-subtitle">Real-time carrier network monitoring</p>
+            </div>
+            <div class="header-actions">
+                <span class="uptime-badge" id="uptime-badge">LIVE</span>
             </div>
         </header>
 
-        <section id="page-overview" class="page active">
-            <div class="bento-grid">
-                <div class="bento-item stat-card">
-                    <h3>المكالمات النشطة</h3>
-                    <div class="value" id="stat-active-calls">0</div>
-                    <div class="trend up">+12% من الساعة الماضية</div>
+        <div class="page-container">
+
+            <!-- ══════════ Overview ══════════ -->
+            <section id="page-overview" class="page active">
+                <div class="kpi-row">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Active Calls</div>
+                        <div class="kpi-value" id="kpi-calls">0</div>
+                        <div class="kpi-trend">Real-time</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Registered Endpoints</div>
+                        <div class="kpi-value" id="kpi-users">0</div>
+                        <div class="kpi-trend">Total subscribers</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">System Status</div>
+                        <div class="kpi-value status-ok" id="kpi-status">&mdash;</div>
+                        <div class="kpi-trend">All services running</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Platform Version</div>
+                        <div class="kpi-value" id="kpi-version">&mdash;</div>
+                        <div class="kpi-trend">Carrier Edition</div>
+                    </div>
                 </div>
-                <div class="bento-item stat-card">
-                    <h3>المسجلين الآن</h3>
-                    <div class="value" id="stat-registrations">0</div>
-                    <div class="trend">مستقر</div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-head">
+                            <h3>Network Throughput</h3>
+                            <span class="card-badge">Last 60s</span>
+                        </div>
+                        <div class="chart-wrap">
+                            <canvas id="throughputChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-head">
+                            <h3>Call Distribution</h3>
+                            <span class="card-badge">Today</span>
+                        </div>
+                        <div class="chart-wrap">
+                            <canvas id="callDistChart"></canvas>
+                        </div>
+                    </div>
                 </div>
-                <div class="bento-item chart-card large">
-                    <h3>أداء الشبكة (Packets/sec)</h3>
-                    <canvas id="networkChart"></canvas>
-                </div>
-                <div class="bento-item alert-card">
-                    <h3>تنبيهات الأمان</h3>
-                    <ul id="security-alerts">
-                        <li>لا يوجد تهديدات حالياً</li>
+
+                <div class="card">
+                    <div class="card-head">
+                        <h3>Recent Activity</h3>
+                    </div>
+                    <ul class="log-list" id="activity-log">
+                        <li>System initialized and ready for connections</li>
                     </ul>
                 </div>
-            </div>
-        </section>
+            </section>
 
-        <section id="page-users" class="page">
-            <div class="section-header">
-                <h2>إدارة المشتركين</h2>
-                <button class="btn-primary" onclick="showModal('user-modal')">إضافة مشترك جديد +</button>
-            </div>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>الاسم</th>
-                            <th>SIP URI</th>
-                            <th>الرصيد</th>
-                            <th>الحالة</th>
-                            <th>الإجراءات</th>
-                        </tr>
-                    </thead>
-                    <tbody id="user-table-body">
-                        <!-- Data will be loaded here -->
-                    </tbody>
-                </table>
-            </div>
-        </section>
+            <!-- ══════════ Subscribers ══════════ -->
+            <section id="page-subscribers" class="page">
+                <div class="toolbar">
+                    <div class="toolbar-info">
+                        <span id="sub-count">0</span> total subscribers
+                    </div>
+                    <button class="btn" onclick="openModal('add-sub')">+ Add Subscriber</button>
+                </div>
+
+                <div class="card no-pad">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Phone Number</th>
+                                <th>SIP URI</th>
+                                <th>Balance</th>
+                                <th>Tier</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sub-tbody">
+                            <tr>
+                                <td colspan="6" class="empty-state">No subscribers yet. Add the first one to get
+                                    started.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ══════════ Live Calls ══════════ -->
+            <section id="page-calls" class="page">
+                <div class="toolbar">
+                    <div class="toolbar-info">
+                        <span id="call-count">0</span> active sessions
+                    </div>
+                    <button class="btn btn-outline" onclick="fetchCalls()">Refresh</button>
+                </div>
+
+                <div class="card no-pad">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Caller</th>
+                                <th>Callee</th>
+                                <th>State</th>
+                                <th>Duration</th>
+                                <th>Rate $/sec</th>
+                                <th>Tenant</th>
+                            </tr>
+                        </thead>
+                        <tbody id="call-tbody">
+                            <tr>
+                                <td colspan="6" class="empty-state">No active calls at this time</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ══════════ CDR ══════════ -->
+            <section id="page-cdr" class="page">
+                <div class="card">
+                    <div class="card-head">
+                        <h3>Call Detail Records</h3>
+                        <span class="card-badge">Historical</span>
+                    </div>
+                    <p class="muted">CDR records are stored and available for billing reconciliation. Connect a
+                        persistent database to enable full CDR logging.</p>
+                    <div class="stat-inline-row">
+                        <div class="stat-inline">
+                            <span class="stat-inline-val" id="cdr-total">0</span>
+                            <span class="stat-inline-label">Total Calls Today</span>
+                        </div>
+                        <div class="stat-inline">
+                            <span class="stat-inline-val" id="cdr-minutes">0</span>
+                            <span class="stat-inline-label">Total Minutes</span>
+                        </div>
+                        <div class="stat-inline">
+                            <span class="stat-inline-val" id="cdr-revenue">$0.00</span>
+                            <span class="stat-inline-label">Revenue Today</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ══════════ Security ══════════ -->
+            <section id="page-security" class="page">
+                <div class="kpi-row">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Firewall Status</div>
+                        <div class="kpi-value status-ok">Active</div>
+                        <div class="kpi-trend">All rules enforced</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Blocked IPs</div>
+                        <div class="kpi-value" id="sec-blocked">0</div>
+                        <div class="kpi-trend">Auto-block after 5 failures</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Auth Failures (24h)</div>
+                        <div class="kpi-value" id="sec-failures">0</div>
+                        <div class="kpi-trend">Brute-force detected</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-head">
+                        <h3>Security Policies</h3>
+                    </div>
+                    <div class="policy-grid">
+                        <div class="policy-item">
+                            <div class="policy-name">Brute-Force Protection</div>
+                            <div class="policy-status on">Enabled</div>
+                        </div>
+                        <div class="policy-item">
+                            <div class="policy-name">IP Blacklisting</div>
+                            <div class="policy-status on">Enabled</div>
+                        </div>
+                        <div class="policy-item">
+                            <div class="policy-name">Max-Forwards Validation</div>
+                            <div class="policy-status on">Enabled</div>
+                        </div>
+                        <div class="policy-item">
+                            <div class="policy-name">SIP Digest Auth</div>
+                            <div class="policy-status off">Coming Soon</div>
+                        </div>
+                        <div class="policy-item">
+                            <div class="policy-name">TLS/SRTP Encryption</div>
+                            <div class="policy-status off">Coming Soon</div>
+                        </div>
+                        <div class="policy-item">
+                            <div class="policy-name">Rate Limiting</div>
+                            <div class="policy-status on">Enabled</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ══════════ Network ══════════ -->
+            <section id="page-network" class="page">
+                <div class="kpi-row">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Protocol</div>
+                        <div class="kpi-value" id="net-proto">TCP</div>
+                        <div class="kpi-trend">Transport layer</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">SIP Port</div>
+                        <div class="kpi-value">5060</div>
+                        <div class="kpi-trend">Listening</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Max Capacity</div>
+                        <div class="kpi-value" id="net-cap">100K</div>
+                        <div class="kpi-trend">Concurrent sessions</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-head">
+                        <h3>Network Topology</h3>
+                    </div>
+                    <div class="topology">
+                        <div class="topo-node">
+                            <div class="topo-icon">📱</div>
+                            <div>Linphone Client A</div>
+                        </div>
+                        <div class="topo-arrow">→ INVITE →</div>
+                        <div class="topo-node highlight">
+                            <div class="topo-icon">📡</div>
+                            <div>XSIP Proxy</div>
+                        </div>
+                        <div class="topo-arrow">→ INVITE →</div>
+                        <div class="topo-node">
+                            <div class="topo-icon">📱</div>
+                            <div>Linphone Client B</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-head">
+                        <h3>Client Setup Guide</h3>
+                    </div>
+                    <div class="setup-steps">
+                        <div class="step">
+                            <div class="step-num">1</div>
+                            <div>
+                                <strong>SIP Account</strong>
+                                <p>Enter the subscriber phone number (e.g. 055)</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num">2</div>
+                            <div>
+                                <strong>Domain / Server</strong>
+                                <p>Enter your Railway deployment URL</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num">3</div>
+                            <div>
+                                <strong>Transport</strong>
+                                <p>Select TCP for reliable delivery</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num">4</div>
+                            <div>
+                                <strong>Port</strong>
+                                <p>Use the TCP proxy port from Railway settings</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ══════════ Settings ══════════ -->
+            <section id="page-settings" class="page">
+                <div class="card">
+                    <div class="card-head">
+                        <h3>System Configuration</h3>
+                    </div>
+                    <div class="settings-grid">
+                        <div class="setting-row">
+                            <div class="setting-label">SIP Protocol</div>
+                            <div class="setting-value" id="cfg-proto">TCP</div>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-label">Max Concurrent Calls</div>
+                            <div class="setting-value" id="cfg-max">100,000</div>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-label">Billing Rate per Second</div>
+                            <div class="setting-value" id="cfg-rate">$0.01</div>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-label">Registration TTL</div>
+                            <div class="setting-value" id="cfg-ttl">1 hour</div>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-label">Firewall Threshold</div>
+                            <div class="setting-value" id="cfg-fw">5 attempts</div>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-label">SIP User-Agent</div>
+                            <div class="setting-value">NextGen-SIP-Proxy/2.5-Railway</div>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-label">Redis Backend</div>
+                            <div class="setting-value">Connected</div>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-label">Admin API Port</div>
+                            <div class="setting-value">8080</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
     </main>
 
-    <!-- Modals -->
-    <div id="user-modal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="hideModal('user-modal')">&times;</span>
-            <h2>إضافة هاتف جديد</h2>
-            <form id="user-form">
-                <input type="text" id="user-name" placeholder="الاسم" required>
-                <input type="text" id="user-sip" placeholder="رقم الهاتف (مثال: 100)" required>
-                <input type="password" id="user-pass" placeholder="كلمة المرور" required>
-                <input type="number" id="user-balance" placeholder="الرصيد الابتدائي ($)" required>
-                <button type="submit" class="btn-primary">حفظ البيانات</button>
+    <!-- ═══ Add Subscriber Modal ═══ -->
+    <div id="modal-add-sub" class="overlay">
+        <div class="modal-box">
+            <div class="modal-top">
+                <h3>Add New Subscriber</h3>
+                <button class="close-btn" onclick="closeModal('add-sub')">&times;</button>
+            </div>
+            <form id="form-add-sub" onsubmit="submitNewSub(event)">
+                <label>Display Name</label>
+                <input type="text" id="f-name" placeholder="John Doe" required>
+                <label>Phone Number (SIP ID)</label>
+                <input type="text" id="f-id" placeholder="055" required>
+                <label>Password</label>
+                <input type="password" id="f-pass" placeholder="••••••" required>
+                <label>Initial Balance ($)</label>
+                <input type="number" id="f-bal" placeholder="50.00" step="0.01" value="50" required>
+                <button type="submit" class="btn btn-block">Create Subscriber</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ═══ Edit Balance Modal ═══ -->
+    <div id="modal-edit-bal" class="overlay">
+        <div class="modal-box">
+            <div class="modal-top">
+                <h3>Update Balance</h3>
+                <button class="close-btn" onclick="closeModal('edit-bal')">&times;</button>
+            </div>
+            <form id="form-edit-bal" onsubmit="submitBalance(event)">
+                <input type="hidden" id="eb-id">
+                <label>New Balance ($)</label>
+                <input type="number" id="eb-amount" step="0.01" required>
+                <button type="submit" class="btn btn-block">Update</button>
             </form>
         </div>
     </div>
 
     <script src="app.js"></script>
 </body>
+
 </html>
