@@ -179,7 +179,7 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 					log.Printf("[INVITE] Response channel closed for %s", callID)
 					return
 				}
-				log.Printf("[INVITE] ← Response %d %s for %s", res.StatusCode, res.Reason(), callID)
+				log.Printf("[INVITE] ← Response %d %s for %s", res.StatusCode, res.Reason, callID)
 				tx.Respond(res)
 				if res.StatusCode >= 200 {
 					log.Printf("[INVITE] Final response %d relayed, done", res.StatusCode)
