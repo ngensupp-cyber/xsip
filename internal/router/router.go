@@ -151,7 +151,7 @@ func (e *RoutingEngine) handleRegister(req *sip.Request) (string, error) {
 
 	user := extractUser(from)
 	stripped := stripDialPrefix(user)
-	destValue := fmt.Sprintf("sip:%s;transport=tcp", source)
+	destValue := source
 
 	// Extract domain
 	domain := ""

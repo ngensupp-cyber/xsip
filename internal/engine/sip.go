@@ -2,9 +2,8 @@ package engine
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log"
-	"strings"
 	"nextgen-sip/internal/firewall"
 	"nextgen-sip/internal/router"
 	"nextgen-sip/pkg/utils"
@@ -42,62 +41,100 @@ func NewSIPEngine(ua *sipgo.UserAgent, r *router.RoutingEngine, cc *CallControl,
 func (e *SIPEngine) Start(ctx context.Context, network, addr string) error {
 	e.server.OnInvite(e.onInvite)
 	e.server.OnRegister(e.onRegister)
-	e.server.OnBye(e.onBye)
-	e.server.OnMessage(e.onMessage)
+	e.server.OnBye(e.proxyRoute)
+	e.server.OnMessage(e.proxyRoute)
 	e.server.OnOptions(e.onOptions)
 	e.server.OnAck(e.onAck)
+	e.server.OnCancel(e.proxyRoute)
 
-	log.Printf("=== XSIP Carrier Engine v5.0 ===")
+	log.Printf("=== XSIP Carrier Engine v6.0 ===")
 	log.Printf("Listening on %s (%s)", addr, network)
 	return e.server.ListenAndServe(ctx, network, addr)
 }
 
-// ─── Build proxy request (no Via pollution) ───────────────────────
-func buildProxyRequest(method sip.RequestMethod, destURI sip.Uri, original *sip.Request) *sip.Request {
-	newReq := sip.NewRequest(method, destURI)
-
-	sip.CopyHeaders("From", original, newReq)
-	sip.CopyHeaders("To", original, newReq)
-	sip.CopyHeaders("Call-ID", original, newReq)
-	sip.CopyHeaders("CSeq", original, newReq)
-	sip.CopyHeaders("Contact", original, newReq)
-	sip.CopyHeaders("Max-Forwards", original, newReq)
-	sip.CopyHeaders("Content-Type", original, newReq)
-
-	if original.Body() != nil {
-		newReq.SetBody(original.Body())
+// ─── Helper: send a response back to the request source ──────────
+func (e *SIPEngine) reply(tx sip.ServerTransaction, req *sip.Request, code int, reason string) {
+	resp := sip.NewResponseFromRequest(req, code, reason, nil)
+	resp.SetDestination(req.Source())
+	if err := tx.Respond(resp); err != nil {
+		log.Printf("[SIP] Failed to respond %d: %v", code, err)
 	}
-
-	return newReq
 }
 
-// ─── Parse destination URI ────────────────────────────────────────
-func parseDestination(dest string) (sip.Uri, error) {
-	var uri sip.Uri
-
-	raw := strings.TrimPrefix(dest, "sip:")
-	raw = strings.TrimPrefix(raw, "sips:")
-
-	hostPort := raw
-	if idx := strings.Index(raw, ";"); idx >= 0 {
-		hostPort = raw[:idx]
+// ─── Generic Proxy Route (BYE, MESSAGE, CANCEL, etc.) ────────────
+// Follows the official sipgo proxy pattern: SetDestination + ClientRequestAddVia
+func (e *SIPEngine) proxyRoute(req *sip.Request, tx sip.ServerTransaction) {
+	ip := req.Source()
+	if !e.fw.IsAllowed(ip) {
+		return
 	}
 
-	host := hostPort
-	port := 0
-	if idx := strings.LastIndex(hostPort, ":"); idx >= 0 {
-		host = hostPort[:idx]
-		fmt.Sscanf(hostPort[idx+1:], "%d", &port)
+	method := req.Method
+	from := req.From().Address.String()
+	to := req.To().Address.String()
+	log.Printf("[%s] %s -> %s", method, from, to)
+
+	// Handle BYE call tracking
+	if method == sip.BYE {
+		e.cc.EndCall(req.CallID().Value())
 	}
 
-	uri.Host = host
-	if port > 0 {
-		uri.Port = port
+	// Route to find destination
+	dest, err := e.router.Route(req)
+	if err != nil {
+		log.Printf("[%s] ✗ Route failed: %v", method, err)
+		e.reply(tx, req, 404, "Not Found")
+		return
 	}
-	uri.UriParams = sip.NewParams()
-	uri.UriParams.Add("transport", "tcp")
+	log.Printf("[%s] ✓ Dest: %s", method, dest)
 
-	return uri, nil
+	// ★ KEY: Set destination on the ORIGINAL request (don't build a new one!)
+	req.SetDestination(dest)
+
+	// ★ KEY: Use ClientRequestAddVia so sipgo properly manages Via headers
+	clTx, err := e.client.TransactionRequest(context.Background(), req, sipgo.ClientRequestAddVia)
+	if err != nil {
+		log.Printf("[%s] ✗ Proxy failed: %v", method, err)
+		e.reply(tx, req, 502, "Bad Gateway")
+		return
+	}
+	defer clTx.Terminate()
+
+	// ★ BLOCK: wait for responses and relay them back
+	for {
+		select {
+		case res, more := <-clTx.Responses():
+			if !more {
+				return
+			}
+
+			log.Printf("[%s] ← %d %s", method, res.StatusCode, res.Reason)
+
+			// ★ KEY: Set destination back to caller and remove top Via
+			res.SetDestination(req.Source())
+			res.RemoveHeader("Via")
+
+			if err := tx.Respond(res); err != nil {
+				log.Printf("[%s] ✗ Relay response failed: %v", method, err)
+			}
+
+		case <-clTx.Done():
+			if err := clTx.Err(); err != nil {
+				if !errors.Is(err, sip.ErrTransactionTerminated) {
+					log.Printf("[%s] Client tx error: %v", method, err)
+				}
+			}
+			return
+
+		case <-tx.Done():
+			if err := tx.Err(); err != nil {
+				if !errors.Is(err, sip.ErrTransactionTerminated) {
+					log.Printf("[%s] Server tx error: %v", method, err)
+				}
+			}
+			return
+		}
+	}
 }
 
 // ─── REGISTER ─────────────────────────────────────────────────────
@@ -111,17 +148,15 @@ func (e *SIPEngine) onRegister(req *sip.Request, tx sip.ServerTransaction) {
 	result, err := e.router.Route(req)
 	if err != nil {
 		e.fw.RecordFailedAuth(ip)
-		res := sip.NewResponseFromRequest(req, 401, "Unauthorized", nil)
-		tx.Respond(res)
+		e.reply(tx, req, 401, "Unauthorized")
 		return
 	}
 
-	log.Printf("[SIP] ✓ Registration OK: %s", result)
-	res := sip.NewResponseFromRequest(req, 200, "OK", nil)
-	tx.Respond(res)
+	log.Printf("[SIP] ✓ Registration: %s", result)
+	e.reply(tx, req, 200, "OK")
 }
 
-// ─── INVITE (BLOCKING — keeps server tx alive) ───────────────────
+// ─── INVITE ───────────────────────────────────────────────────────
 func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 	ip := req.Source()
 	if !e.fw.IsAllowed(ip) {
@@ -141,194 +176,104 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 
 	log.Printf("[INVITE] %s -> %s (CallID: %s)", from, to, callID)
 
-	// Send 100 Trying
-	trying := sip.NewResponseFromRequest(req, 100, "Trying", nil)
-	tx.Respond(trying)
-
 	// Route
 	dest, err := e.router.Route(req)
 	if err != nil {
-		log.Printf("[INVITE] ✗ Routing failed: %v", err)
-		res := sip.NewResponseFromRequest(req, 404, "Not Found", nil)
-		tx.Respond(res)
+		log.Printf("[INVITE] ✗ Route failed: %v", err)
+		e.reply(tx, req, 404, "Not Found")
 		return
 	}
-	log.Printf("[INVITE] ✓ Destination: %s", dest)
+	log.Printf("[INVITE] ✓ Dest: %s", dest)
 
 	// Track call
 	e.cc.StartCall(from, to, callID, tenantID)
 
-	// Build destination URI
-	destURI, err := parseDestination(dest)
+	// ★ KEY: Set destination on original request
+	req.SetDestination(dest)
+
+	// ★ KEY: Forward with proper Via and Record-Route
+	clTx, err := e.client.TransactionRequest(context.Background(), req, sipgo.ClientRequestAddVia)
 	if err != nil {
-		res := sip.NewResponseFromRequest(req, 502, "Bad Gateway", nil)
-		tx.Respond(res)
+		log.Printf("[INVITE] ✗ Proxy failed: %v", err)
+		e.reply(tx, req, 503, "Service Unavailable")
 		return
 	}
-
-	// Build and send proxy request
-	proxyReq := buildProxyRequest(sip.INVITE, destURI, req)
-	log.Printf("[INVITE] → Sending to %s:%d", destURI.Host, destURI.Port)
-
-	ctx := context.Background()
-	clTx, err := e.client.TransactionRequest(ctx, proxyReq)
-	if err != nil {
-		log.Printf("[INVITE] ✗ Send failed: %v", err)
-		res := sip.NewResponseFromRequest(req, 503, "Service Unavailable", nil)
-		tx.Respond(res)
-		return
-	}
-	log.Printf("[INVITE] ✓ Sent! Blocking until response...")
-
-	// ★ BLOCK HERE — do NOT return from handler until final response
-	// This keeps the server transaction alive so we can relay responses
 	defer clTx.Terminate()
+
+	log.Printf("[INVITE] ✓ Forwarded, blocking for response...")
+
+	// ★ BLOCK: process responses, ACKs, and cancellations
 	for {
 		select {
-		case res, ok := <-clTx.Responses():
-			if !ok || res == nil {
-				log.Printf("[INVITE] ✗ Response channel closed")
+		case res, more := <-clTx.Responses():
+			if !more {
 				return
 			}
+
 			log.Printf("[INVITE] ← %d %s", res.StatusCode, res.Reason)
 
-			// Build a new response for the original transaction
-			relay := sip.NewResponseFromRequest(req, res.StatusCode, res.Reason, res.Body())
-			tx.Respond(relay)
+			res.SetDestination(req.Source())
+			res.RemoveHeader("Via")
+
+			if err := tx.Respond(res); err != nil {
+				log.Printf("[INVITE] ✗ Relay failed: %v", err)
+			}
 
 			if res.StatusCode >= 200 {
-				log.Printf("[INVITE] ✓ Call established! Final=%d", res.StatusCode)
+				log.Printf("[INVITE] ✓ Final response %d relayed!", res.StatusCode)
 				return
 			}
+
+		case ack := <-tx.Acks():
+			// Relay ACK to callee
+			log.Printf("[INVITE] ACK received, relaying to %s", dest)
+			ack.SetDestination(dest)
+			e.client.WriteRequest(ack, sipgo.ClientRequestAddVia)
+
 		case <-clTx.Done():
-			log.Printf("[INVITE] Client tx done for %s", callID)
+			if err := clTx.Err(); err != nil {
+				if !errors.Is(err, sip.ErrTransactionTerminated) {
+					log.Printf("[INVITE] Client tx error: %v", err)
+				}
+			}
+			return
+
+		case <-tx.Done():
+			if err := tx.Err(); err != nil {
+				if errors.Is(err, sip.ErrTransactionCanceled) {
+					// Caller canceled — send CANCEL to callee
+					log.Printf("[INVITE] Caller canceled, forwarding CANCEL")
+					cancelReq := sip.NewRequest(sip.CANCEL, req.Recipient)
+					sip.CopyHeaders("Via", req, cancelReq)
+					sip.CopyHeaders("From", req, cancelReq)
+					sip.CopyHeaders("To", req, cancelReq)
+					sip.CopyHeaders("Call-ID", req, cancelReq)
+					cancelReq.SetDestination(dest)
+					e.client.Do(context.Background(), cancelReq)
+					return
+				}
+				if !errors.Is(err, sip.ErrTransactionTerminated) {
+					log.Printf("[INVITE] Server tx error: %v", err)
+				}
+			}
 			return
 		}
 	}
 }
 
-// ─── BYE (BLOCKING) ──────────────────────────────────────────────
-func (e *SIPEngine) onBye(req *sip.Request, tx sip.ServerTransaction) {
-	callID := req.CallID().Value()
-	log.Printf("[BYE] CallID: %s", callID)
-	e.cc.EndCall(callID)
-
-	dest, err := e.router.Route(req)
-	if err != nil {
-		res := sip.NewResponseFromRequest(req, 200, "OK", nil)
-		tx.Respond(res)
-		return
-	}
-
-	destURI, err := parseDestination(dest)
-	if err != nil {
-		res := sip.NewResponseFromRequest(req, 200, "OK", nil)
-		tx.Respond(res)
-		return
-	}
-
-	proxyReq := buildProxyRequest(sip.BYE, destURI, req)
-
-	ctx := context.Background()
-	clTx, err := e.client.TransactionRequest(ctx, proxyReq)
-	if err != nil {
-		log.Printf("[BYE] Relay failed: %v", err)
-		res := sip.NewResponseFromRequest(req, 200, "OK", nil)
-		tx.Respond(res)
-		return
-	}
-
-	// Block until response
-	defer clTx.Terminate()
-	select {
-	case res, ok := <-clTx.Responses():
-		if ok && res != nil {
-			log.Printf("[BYE] ← %d", res.StatusCode)
-			relay := sip.NewResponseFromRequest(req, res.StatusCode, res.Reason, nil)
-			tx.Respond(relay)
-		} else {
-			res := sip.NewResponseFromRequest(req, 200, "OK", nil)
-			tx.Respond(res)
-		}
-	case <-clTx.Done():
-		res := sip.NewResponseFromRequest(req, 200, "OK", nil)
-		tx.Respond(res)
-	}
-}
-
-// ─── MESSAGE (BLOCKING) ──────────────────────────────────────────
-func (e *SIPEngine) onMessage(req *sip.Request, tx sip.ServerTransaction) {
-	from := req.From().Address.String()
-	to := req.To().Address.String()
-	log.Printf("[MESSAGE] %s -> %s", from, to)
-
-	dest, err := e.router.Route(req)
-	if err != nil {
-		log.Printf("[MESSAGE] ✗ Routing failed: %v", err)
-		res := sip.NewResponseFromRequest(req, 404, "Not Found", nil)
-		tx.Respond(res)
-		return
-	}
-	log.Printf("[MESSAGE] ✓ Destination: %s", dest)
-
-	destURI, err := parseDestination(dest)
-	if err != nil {
-		res := sip.NewResponseFromRequest(req, 502, "Bad Gateway", nil)
-		tx.Respond(res)
-		return
-	}
-
-	proxyReq := buildProxyRequest(sip.MESSAGE, destURI, req)
-
-	ctx := context.Background()
-	clTx, err := e.client.TransactionRequest(ctx, proxyReq)
-	if err != nil {
-		log.Printf("[MESSAGE] ✗ Send failed: %v", err)
-		res := sip.NewResponseFromRequest(req, 503, "Service Unavailable", nil)
-		tx.Respond(res)
-		return
-	}
-	log.Printf("[MESSAGE] ✓ Sent, blocking...")
-
-	// Block until response
-	defer clTx.Terminate()
-	select {
-	case res, ok := <-clTx.Responses():
-		if ok && res != nil {
-			log.Printf("[MESSAGE] ← %d %s", res.StatusCode, res.Reason)
-			relay := sip.NewResponseFromRequest(req, res.StatusCode, res.Reason, nil)
-			tx.Respond(relay)
-		} else {
-			r := sip.NewResponseFromRequest(req, 408, "Request Timeout", nil)
-			tx.Respond(r)
-		}
-	case <-clTx.Done():
-		log.Printf("[MESSAGE] Client tx done")
-	}
-}
-
-// ─── ACK ──────────────────────────────────────────────────────────
+// ─── ACK (standalone, outside INVITE tx) ──────────────────────────
 func (e *SIPEngine) onAck(req *sip.Request, tx sip.ServerTransaction) {
-	log.Printf("[ACK] CallID: %s", req.CallID().Value())
-
 	dest, err := e.router.Route(req)
 	if err != nil {
 		return
 	}
 
-	destURI, err := parseDestination(dest)
-	if err != nil {
-		return
-	}
-
-	proxyReq := buildProxyRequest(sip.ACK, destURI, req)
-
-	ctx := context.Background()
-	e.client.TransactionRequest(ctx, proxyReq)
+	log.Printf("[ACK] Relaying to %s", dest)
+	req.SetDestination(dest)
+	e.client.WriteRequest(req, sipgo.ClientRequestAddVia)
 }
 
 // ─── OPTIONS ──────────────────────────────────────────────────────
 func (e *SIPEngine) onOptions(req *sip.Request, tx sip.ServerTransaction) {
-	res := sip.NewResponseFromRequest(req, 200, "OK", nil)
-	tx.Respond(res)
+	e.reply(tx, req, 200, "OK")
 }
