@@ -119,7 +119,7 @@ func (e *SIPEngine) proxyRoute(req *sip.Request, tx sip.ServerTransaction) {
 
 		case <-clTx.Done():
 			err := clTx.Err()
-			if err != nil && err != sip.ErrTransactionTerminated {
+			if err != nil {
 				log.Printf("[%s] Client tx done with error: %v", method, err)
 			} else {
 			    log.Printf("[%s] Client tx done", method)
@@ -128,7 +128,7 @@ func (e *SIPEngine) proxyRoute(req *sip.Request, tx sip.ServerTransaction) {
 
 		case <-tx.Done():
 			err := tx.Err()
-			if err != nil && err != sip.ErrTransactionTerminated {
+			if err != nil {
 				log.Printf("[%s] Server tx done with error: %v", method, err)
 			} else {
 			    log.Printf("[%s] Server tx done", method)
@@ -233,18 +233,18 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 
 		case <-clTx.Done():
 			err := clTx.Err()
-			if err != nil && err != sip.ErrTransactionTerminated {
+			if err != nil {
 				log.Printf("[INVITE] Client tx done with error: %v", err)
 			} else {
-			    log.Printf("[INVITE] Client tx done", method)
+			    log.Printf("[INVITE] Client tx done")
 			}
 			return
 
 		case <-tx.Done():
 			err := tx.Err()
 			if err != nil {
-				if err == sip.ErrTransactionCanceled {
-					// Caller canceled — send CANCEL to callee
+				// If error contains "canceled", forward CANCEL to callee
+				if strings.Contains(err.Error(), "canceled") || strings.Contains(err.Error(), "terminated") {
 					log.Printf("[INVITE] Caller canceled, forwarding CANCEL")
 					cancelReq := sip.NewRequest(sip.CANCEL, req.Recipient)
 					sip.CopyHeaders("Via", req, cancelReq)
@@ -255,9 +255,7 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 					e.client.Do(context.Background(), cancelReq)
 					return
 				}
-				if err != sip.ErrTransactionTerminated {
-					log.Printf("[INVITE] Server tx error: %v", err)
-				}
+				log.Printf("[INVITE] Server tx error: %v", err)
 			}
 			log.Printf("[INVITE] Server tx done")
 			return
