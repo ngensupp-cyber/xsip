@@ -47,37 +47,23 @@ func (e *SIPEngine) Start(ctx context.Context, network, addr string) error {
 	e.server.OnOptions(e.onOptions)
 	e.server.OnAck(e.onAck)
 
-	log.Printf("=== XSIP Carrier Engine v4.2 ===")
+	log.Printf("=== XSIP Carrier Engine v5.0 ===")
 	log.Printf("Listening on %s (%s)", addr, network)
 	return e.server.ListenAndServe(ctx, network, addr)
 }
 
-// ─── Build a NEW proxy request (no Via pollution) ─────────────────
-// Instead of cloning (which copies caller's Via headers),
-// build a fresh request and copy only essential headers.
+// ─── Build proxy request (no Via pollution) ───────────────────────
 func buildProxyRequest(method sip.RequestMethod, destURI sip.Uri, original *sip.Request) *sip.Request {
 	newReq := sip.NewRequest(method, destURI)
 
-	// Copy essential headers from original
-	if from := original.From(); from != nil {
-		sip.CopyHeaders("From", original, newReq)
-	}
-	if to := original.To(); to != nil {
-		sip.CopyHeaders("To", original, newReq)
-	}
-	if callID := original.CallID(); callID != nil {
-		sip.CopyHeaders("Call-ID", original, newReq)
-	}
-	if cseq := original.CSeq(); cseq != nil {
-		sip.CopyHeaders("CSeq", original, newReq)
-	}
-
-	// Copy Contact, Max-Forwards, Content-Type
+	sip.CopyHeaders("From", original, newReq)
+	sip.CopyHeaders("To", original, newReq)
+	sip.CopyHeaders("Call-ID", original, newReq)
+	sip.CopyHeaders("CSeq", original, newReq)
 	sip.CopyHeaders("Contact", original, newReq)
 	sip.CopyHeaders("Max-Forwards", original, newReq)
 	sip.CopyHeaders("Content-Type", original, newReq)
 
-	// Copy body (important for MESSAGE content and SDP in INVITE)
 	if original.Body() != nil {
 		newReq.SetBody(original.Body())
 	}
@@ -85,14 +71,13 @@ func buildProxyRequest(method sip.RequestMethod, destURI sip.Uri, original *sip.
 	return newReq
 }
 
-// parseDestination takes "sip:100.64.0.3:16412;transport=tcp" -> sip.Uri
+// ─── Parse destination URI ────────────────────────────────────────
 func parseDestination(dest string) (sip.Uri, error) {
 	var uri sip.Uri
 
 	raw := strings.TrimPrefix(dest, "sip:")
 	raw = strings.TrimPrefix(raw, "sips:")
 
-	// Split off params
 	hostPort := raw
 	if idx := strings.Index(raw, ";"); idx >= 0 {
 		hostPort = raw[:idx]
@@ -136,7 +121,7 @@ func (e *SIPEngine) onRegister(req *sip.Request, tx sip.ServerTransaction) {
 	tx.Respond(res)
 }
 
-// ─── INVITE ───────────────────────────────────────────────────────
+// ─── INVITE (BLOCKING — keeps server tx alive) ───────────────────
 func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 	ip := req.Source()
 	if !e.fw.IsAllowed(ip) {
@@ -156,7 +141,7 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 
 	log.Printf("[INVITE] %s -> %s (CallID: %s)", from, to, callID)
 
-	// Send 100 Trying immediately
+	// Send 100 Trying
 	trying := sip.NewResponseFromRequest(req, 100, "Trying", nil)
 	tx.Respond(trying)
 
@@ -176,13 +161,12 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 	// Build destination URI
 	destURI, err := parseDestination(dest)
 	if err != nil {
-		log.Printf("[INVITE] ✗ URI error: %v", err)
 		res := sip.NewResponseFromRequest(req, 502, "Bad Gateway", nil)
 		tx.Respond(res)
 		return
 	}
 
-	// Build NEW request (not clone!) to avoid Via header pollution
+	// Build and send proxy request
 	proxyReq := buildProxyRequest(sip.INVITE, destURI, req)
 	log.Printf("[INVITE] → Sending to %s:%d", destURI.Host, destURI.Port)
 
@@ -194,38 +178,36 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 		tx.Respond(res)
 		return
 	}
-	log.Printf("[INVITE] ✓ Sent, waiting for response...")
+	log.Printf("[INVITE] ✓ Sent! Blocking until response...")
 
-	// Relay responses
-	go func() {
-		defer clTx.Terminate()
-		for {
-			select {
-			case res, ok := <-clTx.Responses():
-				if !ok || res == nil {
-					log.Printf("[INVITE] Channel closed for %s", callID)
-					return
-				}
-				log.Printf("[INVITE] ← %d %s", res.StatusCode, res.Reason)
-				// Build response for the original server transaction
-				relay := sip.NewResponseFromRequest(req, res.StatusCode, res.Reason, res.Body())
-				tx.Respond(relay)
-				if res.StatusCode >= 200 {
-					log.Printf("[INVITE] ✓ Final response %d relayed", res.StatusCode)
-					return
-				}
-			case <-tx.Done():
-				log.Printf("[INVITE] Server tx done")
-				return
-			case <-clTx.Done():
-				log.Printf("[INVITE] Client tx done")
+	// ★ BLOCK HERE — do NOT return from handler until final response
+	// This keeps the server transaction alive so we can relay responses
+	defer clTx.Terminate()
+	for {
+		select {
+		case res, ok := <-clTx.Responses():
+			if !ok || res == nil {
+				log.Printf("[INVITE] ✗ Response channel closed")
 				return
 			}
+			log.Printf("[INVITE] ← %d %s", res.StatusCode, res.Reason)
+
+			// Build a new response for the original transaction
+			relay := sip.NewResponseFromRequest(req, res.StatusCode, res.Reason, res.Body())
+			tx.Respond(relay)
+
+			if res.StatusCode >= 200 {
+				log.Printf("[INVITE] ✓ Call established! Final=%d", res.StatusCode)
+				return
+			}
+		case <-clTx.Done():
+			log.Printf("[INVITE] Client tx done for %s", callID)
+			return
 		}
-	}()
+	}
 }
 
-// ─── BYE ──────────────────────────────────────────────────────────
+// ─── BYE (BLOCKING) ──────────────────────────────────────────────
 func (e *SIPEngine) onBye(req *sip.Request, tx sip.ServerTransaction) {
 	callID := req.CallID().Value()
 	log.Printf("[BYE] CallID: %s", callID)
@@ -256,21 +238,25 @@ func (e *SIPEngine) onBye(req *sip.Request, tx sip.ServerTransaction) {
 		return
 	}
 
-	go func() {
-		defer clTx.Terminate()
-		select {
-		case res, ok := <-clTx.Responses():
-			if ok && res != nil {
-				relay := sip.NewResponseFromRequest(req, res.StatusCode, res.Reason, res.Body())
-				tx.Respond(relay)
-			}
-		case <-tx.Done():
-		case <-clTx.Done():
+	// Block until response
+	defer clTx.Terminate()
+	select {
+	case res, ok := <-clTx.Responses():
+		if ok && res != nil {
+			log.Printf("[BYE] ← %d", res.StatusCode)
+			relay := sip.NewResponseFromRequest(req, res.StatusCode, res.Reason, nil)
+			tx.Respond(relay)
+		} else {
+			res := sip.NewResponseFromRequest(req, 200, "OK", nil)
+			tx.Respond(res)
 		}
-	}()
+	case <-clTx.Done():
+		res := sip.NewResponseFromRequest(req, 200, "OK", nil)
+		tx.Respond(res)
+	}
 }
 
-// ─── MESSAGE ──────────────────────────────────────────────────────
+// ─── MESSAGE (BLOCKING) ──────────────────────────────────────────
 func (e *SIPEngine) onMessage(req *sip.Request, tx sip.ServerTransaction) {
 	from := req.From().Address.String()
 	to := req.To().Address.String()
@@ -302,24 +288,23 @@ func (e *SIPEngine) onMessage(req *sip.Request, tx sip.ServerTransaction) {
 		tx.Respond(res)
 		return
 	}
-	log.Printf("[MESSAGE] ✓ Sent, waiting...")
+	log.Printf("[MESSAGE] ✓ Sent, blocking...")
 
-	go func() {
-		defer clTx.Terminate()
-		select {
-		case res, ok := <-clTx.Responses():
-			if ok && res != nil {
-				log.Printf("[MESSAGE] ← %d %s", res.StatusCode, res.Reason)
-				relay := sip.NewResponseFromRequest(req, res.StatusCode, res.Reason, nil)
-				tx.Respond(relay)
-			} else {
-				r := sip.NewResponseFromRequest(req, 408, "Request Timeout", nil)
-				tx.Respond(r)
-			}
-		case <-tx.Done():
-		case <-clTx.Done():
+	// Block until response
+	defer clTx.Terminate()
+	select {
+	case res, ok := <-clTx.Responses():
+		if ok && res != nil {
+			log.Printf("[MESSAGE] ← %d %s", res.StatusCode, res.Reason)
+			relay := sip.NewResponseFromRequest(req, res.StatusCode, res.Reason, nil)
+			tx.Respond(relay)
+		} else {
+			r := sip.NewResponseFromRequest(req, 408, "Request Timeout", nil)
+			tx.Respond(r)
 		}
-	}()
+	case <-clTx.Done():
+		log.Printf("[MESSAGE] Client tx done")
+	}
 }
 
 // ─── ACK ──────────────────────────────────────────────────────────
