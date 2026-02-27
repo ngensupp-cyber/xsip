@@ -43,8 +43,9 @@ func (e *SIPEngine) Start(ctx context.Context, network, addr string) error {
 	e.server.OnBye(e.onBye)
 	e.server.OnMessage(e.onMessage)
 	e.server.OnOptions(e.onOptions)
+	e.server.OnAck(e.onAck)
 
-	log.Printf("=== Carrier-Grade SIP Engine v3.0 ===")
+	log.Printf("=== Carrier-Grade SIP Engine v4.0 ===")
 	log.Printf("Listening on %s (%s)", addr, network)
 	return e.server.ListenAndServe(ctx, network, addr)
 }
@@ -254,4 +255,27 @@ func (e *SIPEngine) onMessage(req *sip.Request, tx sip.ServerTransaction) {
 func (e *SIPEngine) onOptions(req *sip.Request, tx sip.ServerTransaction) {
 	res := sip.NewResponseFromRequest(req, 200, "OK", nil)
 	tx.Respond(res)
+}
+
+// ─── ACK Handler ───────────────────────────────────────────────────────────
+func (e *SIPEngine) onAck(req *sip.Request, tx sip.ServerTransaction) {
+	log.Printf("[SIP] ACK received for %s", req.CallID().Value())
+
+	// Try to relay ACK to the other party
+	dest, err := e.router.Route(req)
+	if err != nil {
+		// ACK failures are not critical — just log
+		return
+	}
+
+	var destURI sip.Uri
+	if err := sip.ParseUri(dest, &destURI); err != nil {
+		return
+	}
+
+	proxyReq := req.Clone()
+	proxyReq.Recipient = destURI
+
+	ctx := context.Background()
+	e.client.TransactionRequest(ctx, proxyReq)
 }

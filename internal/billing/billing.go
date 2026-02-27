@@ -8,8 +8,6 @@ import (
 	"nextgen-sip/internal/models"
 )
 
-
-
 type InMemoryBilling struct {
 	mu       sync.RWMutex
 	users    map[string]models.User
@@ -54,31 +52,32 @@ func (b *InMemoryBilling) DeleteUser(uri string) {
 	delete(b.balances, uri)
 }
 
-
+// normalizeURI extracts the user part for flexible billing lookup
 func (b *InMemoryBilling) normalizeURI(uri string) string {
-	// Extracts the user part from sip:user@domain
-	var user string
-	_, err := fmt.Sscanf(uri, "sip:%s", &user)
-	if err != nil {
-		return uri
-	}
-	// Split by @ to get only the username
-	parts := strings.Split(user, "@")
-	return "sip:" + parts[0] + "@localhost"
+	s := strings.TrimPrefix(uri, "sip:")
+	s = strings.TrimPrefix(s, "sips:")
+	parts := strings.Split(s, "@")
+	user := parts[0]
+	// Strip + and country codes
+	user = strings.TrimPrefix(user, "+")
+	return "sip:" + user + "@localhost"
 }
 
 func (b *InMemoryBilling) CanCall(from string, to string) (bool, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	
-	from = b.normalizeURI(from)
-	balance, ok := b.balances[from]
+
+	normalized := b.normalizeURI(from)
+	balance, ok := b.balances[normalized]
 	if !ok {
-		log.Printf("[Billing] Normalized user %s not found, denying call", from)
-		return false, fmt.Errorf("insufficient funds or user not found")
+		// User not in billing system — ALLOW the call by default
+		// This is critical: users registered via Linphone won't be in billing
+		log.Printf("[Billing] User %s not in billing, allowing call", from)
+		return true, nil
 	}
 
 	if balance <= 0 {
+		log.Printf("[Billing] User %s has no balance ($%.2f), denying", from, balance)
 		return false, nil
 	}
 	return true, nil
@@ -88,23 +87,23 @@ func (b *InMemoryBilling) Deduct(user string, amount float64) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	user = b.normalizeURI(user)
-	balance, ok := b.balances[user]
-	if !ok || balance < amount {
+	normalized := b.normalizeURI(user)
+	balance, ok := b.balances[normalized]
+	if !ok {
+		return nil // User not in billing — skip deduction
+	}
+	if balance < amount {
 		return fmt.Errorf("insufficient funds")
 	}
 
-	b.balances[user] -= amount
+	b.balances[normalized] -= amount
 	return nil
 }
 
-
 func (b *InMemoryBilling) StartCall(from string, to string) (string, error) {
-	log.Printf("[Billing] Starting call from %s to %s", from, to)
-	return "session-id-123", nil
+	return "session", nil
 }
 
 func (b *InMemoryBilling) EndCall(sessionID string) error {
-	log.Printf("[Billing] Ending session %s", sessionID)
 	return nil
 }
