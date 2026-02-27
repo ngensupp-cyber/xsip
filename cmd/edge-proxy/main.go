@@ -57,7 +57,8 @@ func main() {
 		log.Fatalf("Failed to create UA: %v", err)
 	}
 
-	sipEngine := engine.NewSIPEngine(ua, rt, cc, fw)
+	sipAddr := "0.0.0.0:" + sipPort
+	sipEngine := engine.NewSIPEngine(ua, rt, cc, fw, sipAddr)
 
 	// Context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -83,7 +84,6 @@ func main() {
 	}()
 
 	// Start SIP Engine
-	sipAddr := "0.0.0.0:" + sipPort
 	if err := sipEngine.Start(ctx, sipProtocol, sipAddr); err != nil {
 		log.Fatalf("SIP Engine failed: %v", err)
 	}

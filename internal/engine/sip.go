@@ -19,12 +19,12 @@ type SIPEngine struct {
 	fw     *firewall.Firewall
 }
 
-func NewSIPEngine(ua *sipgo.UserAgent, r *router.RoutingEngine, cc *CallControl, fw *firewall.Firewall) *SIPEngine {
+func NewSIPEngine(ua *sipgo.UserAgent, r *router.RoutingEngine, cc *CallControl, fw *firewall.Firewall, clientAddr string) *SIPEngine {
 	s, err := sipgo.NewServer(ua)
 	if err != nil {
 		log.Fatal(err)
 	}
-	c, err := sipgo.NewClient(ua)
+	c, err := sipgo.NewClient(ua, sipgo.WithClientAddr(clientAddr))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -118,11 +118,21 @@ func (e *SIPEngine) proxyRoute(req *sip.Request, tx sip.ServerTransaction) {
 			}
 
 		case <-clTx.Done():
-			log.Printf("[%s] Client tx done", method)
+			err := clTx.Err()
+			if err != nil && err != sip.ErrTransactionTerminated {
+				log.Printf("[%s] Client tx done with error: %v", method, err)
+			} else {
+			    log.Printf("[%s] Client tx done", method)
+			}
 			return
 
 		case <-tx.Done():
-			log.Printf("[%s] Server tx done", method)
+			err := tx.Err()
+			if err != nil && err != sip.ErrTransactionTerminated {
+				log.Printf("[%s] Server tx done with error: %v", method, err)
+			} else {
+			    log.Printf("[%s] Server tx done", method)
+			}
 			return
 		}
 	}
@@ -222,10 +232,33 @@ func (e *SIPEngine) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 			e.client.WriteRequest(ack, sipgo.ClientRequestAddVia)
 
 		case <-clTx.Done():
-			log.Printf("[INVITE] Client tx done")
+			err := clTx.Err()
+			if err != nil && err != sip.ErrTransactionTerminated {
+				log.Printf("[INVITE] Client tx done with error: %v", err)
+			} else {
+			    log.Printf("[INVITE] Client tx done", method)
+			}
 			return
 
 		case <-tx.Done():
+			err := tx.Err()
+			if err != nil {
+				if err == sip.ErrTransactionCanceled {
+					// Caller canceled — send CANCEL to callee
+					log.Printf("[INVITE] Caller canceled, forwarding CANCEL")
+					cancelReq := sip.NewRequest(sip.CANCEL, req.Recipient)
+					sip.CopyHeaders("Via", req, cancelReq)
+					sip.CopyHeaders("From", req, cancelReq)
+					sip.CopyHeaders("To", req, cancelReq)
+					sip.CopyHeaders("Call-ID", req, cancelReq)
+					cancelReq.SetDestination(dest)
+					e.client.Do(context.Background(), cancelReq)
+					return
+				}
+				if err != sip.ErrTransactionTerminated {
+					log.Printf("[INVITE] Server tx error: %v", err)
+				}
+			}
 			log.Printf("[INVITE] Server tx done")
 			return
 		}
